@@ -1,0 +1,359 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: GPL-2.0+
+
+import serial
+import binascii
+import argparse
+import time
+
+properties = {
+    "power": {
+        "name": "Power state",
+        "get": [0x01, 0x02],
+        "set": [0x01],
+        "reply": [0x80],
+        "values": ["on", "standby"],
+        },
+    "input": {
+        "name": "Video source",
+        "get": [0x02, 0x00],
+        "set": [0x02],
+        "reply": [0x81],
+        "values": [None, None, "av", "vga1", "vga2", "hdmi3", "hdmi1",
+                   "hdmi2", "pc", None, "prowise", "vga3",
+                   "bluray", "hdmi4k"],
+        },
+    "volume": {
+        "get": [0x03, 0x02],
+        "set": [0x03, 0x00],
+        "reply": [0x82, 0x00],
+        },
+    "mute": {
+        "get": [0x03, 0x03],
+        "set": [0x03, 0x01],
+        "reply": [0x82, 0x01],
+        "values": ["unmute", "mute"],
+        },
+    "pc_power": {
+        "get": [0x09, 0x02],
+        "set": [0x09],
+        "reply": [0x83],
+        "value": ["on", "off", "sleep"],
+        },
+    "freeze": {
+        "get": [0x34, 0x02],
+        "reply": [0x34, 0x03],
+        "values": ["inactive", "active"],
+        },
+    "blank": {
+        "get": [0x35, 0x02],
+        "reply": [0x35, 0x03],
+        "values": ["inactive", "active"],
+        },
+    "keylock": {
+        "name": "Keylock state",
+        "get": [0x39, 0x00],
+        "set": [0x38, 0x04],
+        "reply": [0x40, 0x00],
+        "values": ["locked", "unlocked"]
+        },
+    "irlock": {
+        "name": "IR lock state",
+        "get": [0x39, 0x01],
+        "set": [0x38, 0x05],
+        "reply": [0x40, 0x01],
+        "values": ["locked", "unlocked"]
+        },
+    "brightness": {
+        "name": "Brightness level",
+        "get": [0x1d, 0x02],
+        "set": [0x08, 0x09],
+        "reply": [0x1d, 0x03],
+        },
+    "brightness2": {
+        "name": "Brightness level",
+        "get": [0x39, 0x02],
+        "set": [0x08, 0x09],
+        "reply": [0x40, 0x02],
+        },
+    "contrast": {
+        "name": "Contrast level",
+        "get": [0x1c, 0x02],
+        "set": [0x08, 0x0a],
+        "reply": [0x1c, 0x03],
+        },
+    "contrast2": {
+        "name": "Contrast level",
+        "get": [0x39, 0x03],
+        "set": [0x08, 0x0a],
+        "reply": [0x40, 0x03],
+        },
+    "hue": {
+        "name": "Hue level",
+        "get": [0x39, 0x04],
+        "set": [0x08, 0x0b],
+        "reply": [0x40, 0x04],
+        },
+    "sharpness": {
+        "name": "Sharpness level",
+        "get": [0x39, 0x05],
+        "set": [0x08, 0x0c],
+        "reply": [0x40, 0x05],
+        },
+    "color_temp": {
+        "get": [0x21, 2],
+        "reply": [0x21, 3],
+        "values": ["standard", "warm", "cold"],
+        },
+    "display_preset": {
+        "name": "Display preset",
+        "get": [0x39, 0x06],
+        "set": [0x08, 0x0d],
+        "reply": [0x40, 0x06],
+        "values": ["standard", "bright", "colorfull", "soft", "custom"],
+        },
+    "aspect_ratio": {
+        "name": "Aspect Ratio",
+        "get": [0x39, 0x07],
+        "set": [0x08],
+        "reply": [0x40, 0x07],
+        "values": ["auto", "4:3", "16:9", "PTP"],
+        },
+    "bass": {
+        "name": "Bass level",
+        "get": [0x22, 0x02],
+        "set": [0x03, 0x07],
+        "reply": [0x22, 0x03],
+        },
+    "bass2": {
+        "name": "Bass level",
+        "get": [0x39, 0x08],
+        "set": [0x03, 0x07],
+        "reply": [0x40, 0x08],
+        },
+    "treble": {
+        "name": "Treble level",
+        "get": [0x23, 0x02],
+        "set": [0x03, 0x08],
+        "reply": [0x23, 0x03],
+        },
+    "treble2": {
+        "name": "Treble level",
+        "get": [0x39, 0x09],
+        "set": [0x03, 0x08],
+        "reply": [0x40, 0x09],
+        },
+    "balance": {
+        "name": "Balance level",
+        "get": [0x24, 0x02],
+        "set": [0x03, 0x04],
+        "reply": [0x24, 0x03],
+        },
+    "balance2": {
+        "name": "Balance level",
+        "get": [0x39, 0x0a],
+        "set": [0x03, 0x04],
+        "reply": [0x40, 0x0a],
+        },
+    "sound_preset": {
+        "name": "Sound preset",
+        "get": [0x39, 0x0b],
+        "set": [0x03, 0x06],
+        "reply": [0x40, 0x0b],
+        "values": ["standard", "movie", "meeting", "class", "custom"],
+        },
+    "audio_output": {
+        "name": "Audio Output setting",
+        "get": [0x39, 0x0c],
+        "set": [0x03, 0x05],
+        "reply": [0x40, 0x0c],
+        "values": ["internal", "external", "both"],
+        },
+    "sleep_timer": {
+        "name": "Sleep timer",
+        "get": [0x39, 0x0d],
+        "set": [0x38, 0x00],
+        "reply": [0x40, 0x0d],
+        },
+    "update": {
+        "name": "Update status",
+        "get": [0x39, 0x0e],
+        "set": [0x38, 0x01],
+        "reply": [0x40, 0x0e],
+        "values": ["Auto (on)", "Auto (off)"],
+        },
+    "language": {
+        "name": "Language setting",
+        "get": [0x39, 0x0f],
+        "set": [0x38, 0x02],
+        "reply": [0x40, 0x0f],
+        "values": ["English", "Dutch", "German", "French", "Italian",
+                   "Spanish", "Swedish", "Norwegian", "Danish"],
+        },
+    "user_menu": {
+        "name": "User menu state",
+        "get": [0x39, 0x10],
+        "set": [0x38, 0x03],
+        "reply": [0x40, 0x10],
+        "values": ["off", "swipe", "2 fingers, 2 seconds", "both"],
+        },
+    "led_logo": {
+        "name": "LED-Logo state",
+        "get": [0x39, 0x11],
+        "set": [0x38, 0x06],
+        "reply": [0x40, 0x11],
+        "values": ["inactive", "active"],
+        },
+    "touch": {
+        "name": "Touch state",
+        "get": [0x39, 0x12],
+        "set": [0x38, 0x07],
+        "reply": [0x40, 0x12],
+        "values": ["inactive", "active"],
+        },
+    "rs232": {
+        "name": "RS232 serial port state",
+        "get": [0x39, 0x13],
+        "reply": [0x40, 0x13],
+        "values": ["inactive", "active"],
+        },
+
+    # Unknown codes below this line
+    "show_keylock": {
+        # Causes keylock status to show on screen
+        "cmd": [0x14, 3],
+    },
+    }
+
+class ProwiseProtocol(object):
+    """State machine for Prowise serial protocol messages"""
+    (WAIT_HEAD, IN_MSG, WAIT_END) = range(3)
+    PREAMBLE = [0xaa, 0xbb, 0xcc]
+    END_BYTES = [0xdd, 0xee, 0xff]
+
+    def __init__(self, status):
+        self.status = status
+        self.reset()
+
+    def reset(self, reason=None):
+        if reason:
+            print("Protocol reset:", reason)
+        self.state = self.WAIT_HEAD
+        self.count = 0
+        self.data = [0,0,0,0]
+
+    def recvbyte(self, new_byte):
+        if self.state == self.WAIT_HEAD:
+            if new_byte != self.PREAMBLE[self.count]:
+                self.reset("non-header byte received")
+                return
+            self.count = self.count + 1
+            if self.count == 3:
+                self.state = self.IN_MSG
+                self.count = 0
+            elif self.count > 3:
+                raise RuntimeError
+            return
+
+        elif self.state == self.IN_MSG:
+            self.data[self.count] = new_byte
+            self.count = self.count + 1
+            if self.count == 4:
+                csum = (self.data[0] + self.data[1] + self.data[2]) & 0xff
+                if csum != self.data[3]:
+                    self.reset("Checksum Error")
+                    return
+                self.state = self.WAIT_END
+                self.count = 0
+            return
+
+        elif self.state == self.WAIT_END:
+            if new_byte != self.END_BYTES[self.count]:
+                self.reset("non-end byte received")
+                return
+            self.count = self.count + 1
+            if self.count == 3:
+                self.parse_msg()
+                self.reset()
+                return
+            elif self.count > 3:
+                raise RuntimeError
+
+    def parse_msg(self):
+        cmd = self.data[0]
+        subcmd = self.data[1]
+
+        # Search the attribute datebase for a matching reply code
+        for name, attrib in properties.items():
+            if "reply" in attrib:
+                if [cmd] == attrib["reply"]:
+                    self.status[name] = self.data[1]
+                    self.print_prop(name)
+                    return
+                elif [cmd, subcmd] == attrib["reply"]:
+                    self.status[name] = self.data[2]
+                    self.print_prop(name)
+                    return
+        print("unrecognized response:", self.data)
+                
+    def print_prop(self, name):
+        print(name, "=", self.status[name])
+
+class ProwiseTouchscreen:
+    def __init__(self, port='/dev/ttyUSB0'):
+        self.ser = serial.Serial(port, 9600, timeout=0.01)
+        self.state = { }
+
+        # Get power state to see if TV is connected
+        self.protocol = ProwiseProtocol(self.state)
+
+    def sendcmd(self, m):
+        if len(m) < 2:
+            m = [m[0], 0]
+
+        csum = m[0]+m[1] & 0xff
+        msg = bytes([0xaa, 0xbb, 0xcc, m[0], m[1], 0, csum, 0xdd, 0xee, 0xff])
+        #print(">>", binascii.hexlify(msg))
+        self.ser.write(msg)
+
+    def query_status(self):
+        for name, prop in properties.items():
+            if "get" in prop:
+                self.sendcmd(prop["get"])
+                self.receive()
+        self.receive()
+
+    def receive(self):
+        data = self.ser.read(10)
+        #print("<<", binascii.hexlify(data))
+        while len(data) > 0:
+            for b in bytearray(data):
+                self.protocol.recvbyte(b)
+            data = self.ser.read(4)
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", type=str, help="Command to send to touchscreen")
+    #args = ap.parse_args()
+
+    prowise = ProwiseTouchscreen()
+
+    #if args.cmd in commands:
+    #    cmd = commands[args.cmd]
+    #    prowise.sendcmd(cmd[0], cmd[1])
+    #    if cmd[2]:
+    #        prowise.readreply()
+
+    prowise.query_status()
+
+    # DANGER! I found some kind of service option in the
+    # cmd=10-0x20, subcmd=0 range
+    #for cmd in range(0x10,0x38):
+    #    for subcmd in range(2,3):
+    #        print("Trying command %x:%x"%(cmd, subcmd))
+    #        prowise.sendcmd([cmd,subcmd])
+    #        time.sleep(0.1)
+    #        prowise.receive()
+
+    prowise.ser.close()
